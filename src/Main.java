@@ -1,6 +1,7 @@
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.text.DecimalFormat;
 
 public class Main implements ActionListener {
     private static final double TAX_RATE = 0.13; // 13% tax rate (example)
@@ -64,23 +65,24 @@ public class Main implements ActionListener {
             taxableAmountField.setText("");
             resultField.setText("");
         } else if (e.getSource() == calculateButton) {
-            try {
-                double price = Double.parseDouble(priceField.getText());
-                if (price < 0) {
-                    JOptionPane.showMessageDialog(null, "Price cannot be negative.");
-                    return;
-                }
-                double taxableAmount = price * TAX_RATE;
-                double totalPrice = price + taxableAmount;
-
-                taxableAmountField.setText(String.format("%.2f", taxableAmount));
-                resultField.setText(String.format("%.2f", totalPrice));
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(null, "Please enter a valid number for the price.");
-                priceField.setText("");
-                taxableAmountField.setText("");
-                resultField.setText("");
+            String priceText = priceField.getText();
+            if (priceText.isEmpty()) {
+                JOptionPane.showMessageDialog(null, "Please enter a price.");
+                return;
             }
+            double price;
+            try { price = Double.parseDouble(priceText); }
+            catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(null, "Invalid price format.");
+                return;
+            }
+            if (price < 0) { JOptionPane.showMessageDialog(null, "Price cannot be negative."); return; }
+
+            double taxableAmount = price * TAX_RATE;
+            double totalPrice = price + taxableAmount;
+            DecimalFormat df = new DecimalFormat("0.00");
+            taxableAmountField.setText(df.format(taxableAmount));
+            resultField.setText(df.format(totalPrice));
         }
     }
 }
