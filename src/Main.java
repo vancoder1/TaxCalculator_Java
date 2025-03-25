@@ -1,242 +1,273 @@
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.event.*;
 import java.text.DecimalFormat;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Canadian Tax Calculator application.
+ * Calculates tax amounts based on Canadian provinces in Canadian dollars (CAD).
+ */
 public class Main implements ActionListener {
-    private double taxRate = 0.13; // Default 13% tax rate (example)
-    private String selectedCurrency = "CAD"; // Default currency
-    private static final Map<String, Double> PROVINCE_TAX_RATES = new HashMap<>();
+    // Constants for tax rates
+    private static final Map<String, TaxInfo> PROVINCE_TAX_RATES = new LinkedHashMap<String, TaxInfo>() {{
+        put("Alberta", new TaxInfo(0.05, 0.0, "GST Only"));
+        put("Northwest Territories", new TaxInfo(0.05, 0.0, "GST Only"));
+        put("Nunavut", new TaxInfo(0.05, 0.0, "GST Only"));
+        put("Yukon", new TaxInfo(0.05, 0.0, "GST Only"));
+        put("British Columbia", new TaxInfo(0.05, 0.07, "GST + PST"));
+        put("Manitoba", new TaxInfo(0.05, 0.07, "GST + PST"));
+        put("Saskatchewan", new TaxInfo(0.05, 0.06, "GST + PST"));
+        put("New Brunswick", new TaxInfo(0.05, 0.10, "HST"));
+        put("Newfoundland and Labrador", new TaxInfo(0.05, 0.10, "HST"));
+        put("Nova Scotia", new TaxInfo(0.05, 0.10, "HST"));
+        put("Ontario", new TaxInfo(0.05, 0.08, "HST"));
+        put("Prince Edward Island", new TaxInfo(0.05, 0.10, "HST"));
+        put("Quebec", new TaxInfo(0.05, 0.09975, "GST + QST"));
+    }};
 
-    JButton clearButton, calculateButton;
-    JTextField priceField, taxableAmountField, resultField;
-    JMenuItem cadItem, usdItem, euroItem, gbpItem;
-    JMenuItem abItem, bcItem, mbItem, nbItem, nlItem, nsItem, ntItem, nuItem, onItem, peItem, qcItem, skItem, ytItem;
-    JFrame frame;
+    // UI Components
+    private JButton clearButton, calculateButton;
+    private JTextField priceField, gstAmountField, pstAmountField, totalTaxField, resultField;
+    private JLabel currentProvinceLabel;
+    private JFrame frame;
+    private DecimalFormat df = new DecimalFormat("0.00");
 
-    Main() {
-        initializeProvinceTaxRates();
-        // Create JFrame
-        frame = new JFrame("Tax Calculator");
+    // Status bar
+    private JLabel statusBar;
+
+    // Selected province
+    private String selectedProvince = "Alberta";
+
+    public Main() {
+        initializeUI();
+    }
+
+    /** Initializes the user interface. */
+    private void initializeUI() {
+        frame = new JFrame("Canadian Tax Calculator");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setMinimumSize(new Dimension(400, 300));
+        frame.setMinimumSize(new Dimension(450, 400));
 
-        //Main Panel setup
-        JPanel mainPanel = new JPanel(new GridBagLayout());
+        // Set application icon
+        ImageIcon icon = createImageIcon("/resources/taxicon.png");
+        if (icon != null) frame.setIconImage(icon.getImage());
+
+        // Main panel setup
+        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         frame.add(mainPanel);
 
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5); // Padding
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.weighty = 1.0; //make it responsive
+        // Add panels
+        mainPanel.add(createPanel(new GridBagLayout(), "Input"), BorderLayout.NORTH);
+        mainPanel.add(createPanel(new GridBagLayout(), "Tax Breakdown"), BorderLayout.CENTER);
+        mainPanel.add(new JPanel(new FlowLayout(FlowLayout.CENTER)), BorderLayout.SOUTH);
 
-        // Create JLabels
-        JLabel priceLabel = new JLabel("Price:");
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        mainPanel.add(priceLabel, gbc);
+        // Status bar
+        statusBar = new JLabel(" ");
+        statusBar.setBorder(BorderFactory.createLoweredBevelBorder());
+        mainPanel.add(statusBar, BorderLayout.PAGE_END);
 
-        JLabel taxableAmountLabel = new JLabel("Taxable Amount:");
-        gbc.gridy = 1;
-        mainPanel.add(taxableAmountLabel, gbc);
+        // Setup components
+        setupInputPanel((JPanel) mainPanel.getComponent(0));
+        setupResultsPanel((JPanel) mainPanel.getComponent(1));
+        setupButtons((JPanel) mainPanel.getComponent(2));
+        createMenuBar();
 
-        JLabel resultLabel = new JLabel("Total (with Tax):");
-        gbc.gridy = 2;
-        mainPanel.add(resultLabel, gbc);
+        // Add Enter key listener to price field
+        priceField.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER) calculateTax();
+            }
+        });
 
-        // Create JTextFields
-        priceField = new JTextField();
-        gbc.gridx = 1;
-        gbc.gridy = 0;
-        mainPanel.add(priceField, gbc);
-
-        taxableAmountField = new JTextField();
-        taxableAmountField.setEditable(false);
-        gbc.gridy = 1;
-        mainPanel.add(taxableAmountField, gbc);
-
-        resultField = new JTextField();
-        resultField.setEditable(false);
-        gbc.gridy = 2;
-        mainPanel.add(resultField, gbc);
-
-        //Create buttons
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
-        gbc.gridx = 0;
-        gbc.gridy = 3;
-        gbc.gridwidth = 2;
-        mainPanel.add(buttonPanel, gbc);
-
-        clearButton = new JButton("Clear");
-        clearButton.addActionListener(this);
-        buttonPanel.add(clearButton);
-
-        calculateButton = new JButton("Calculate");
-        calculateButton.addActionListener(this);
-        buttonPanel.add(calculateButton);
-
-        // Reset grid-width after buttons
-        gbc.gridwidth = 1;
-
-        // Create JMenuBar
-        JMenuBar menuBar = new JMenuBar();
-        JMenu provinceMenu = new JMenu("Province");
-        JMenu currencyMenu = new JMenu("Currency");
-
-        // Province Menu Items
-        abItem = new JMenuItem("Alberta");
-        bcItem = new JMenuItem("British Columbia");
-        mbItem = new JMenuItem("Manitoba");
-        nbItem = new JMenuItem("New Brunswick");
-        nlItem = new JMenuItem("Newfoundland and Labrador");
-        nsItem = new JMenuItem("Nova Scotia");
-        ntItem = new JMenuItem("Northwest Territories");
-        nuItem = new JMenuItem("Nunavut");
-        onItem = new JMenuItem("Ontario");
-        peItem = new JMenuItem("Prince Edward Island");
-        qcItem = new JMenuItem("Quebec");
-        skItem = new JMenuItem("Saskatchewan");
-        ytItem = new JMenuItem("Yukon");
-
-        abItem.addActionListener(this);
-        bcItem.addActionListener(this);
-        mbItem.addActionListener(this);
-        nbItem.addActionListener(this);
-        nlItem.addActionListener(this);
-        nsItem.addActionListener(this);
-        ntItem.addActionListener(this);
-        nuItem.addActionListener(this);
-        onItem.addActionListener(this);
-        peItem.addActionListener(this);
-        qcItem.addActionListener(this);
-        skItem.addActionListener(this);
-        ytItem.addActionListener(this);
-
-        provinceMenu.add(abItem);
-        provinceMenu.add(bcItem);
-        provinceMenu.add(mbItem);
-        provinceMenu.add(nbItem);
-        provinceMenu.add(nlItem);
-        provinceMenu.add(nsItem);
-        provinceMenu.add(ntItem);
-        provinceMenu.add(nuItem);
-        provinceMenu.add(onItem);
-        provinceMenu.add(peItem);
-        provinceMenu.add(qcItem);
-        provinceMenu.add(skItem);
-        provinceMenu.add(ytItem);
-
-        // Currency Menu Items
-        cadItem = new JMenuItem("CAD");
-        usdItem = new JMenuItem("USD");
-        euroItem = new JMenuItem("EURO");
-        gbpItem = new JMenuItem("UK POUNDS");
-
-        cadItem.addActionListener(this);
-        usdItem.addActionListener(this);
-        euroItem.addActionListener(this);
-        gbpItem.addActionListener(this);
-
-        currencyMenu.add(cadItem);
-        currencyMenu.add(usdItem);
-        currencyMenu.add(euroItem);
-        currencyMenu.add(gbpItem);
-
-        menuBar.add(provinceMenu);
-        menuBar.add(currencyMenu);
-        frame.setJMenuBar(menuBar);
-
-        frame.pack(); // Adjusts frame size to fit components
-        frame.setLocationRelativeTo(null); // Center the window
+        frame.pack();
+        frame.setLocationRelativeTo(null);
         frame.setVisible(true);
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(Main::new);
+    /** Creates a panel with a titled border. */
+    private JPanel createPanel(LayoutManager layout, String title) {
+        JPanel panel = new JPanel(layout);
+        panel.setBorder(BorderFactory.createTitledBorder(title));
+        return panel;
     }
 
-    public void actionPerformed(ActionEvent e) {
-        if (e.getSource() == clearButton) {
-            priceField.setText("");
-            taxableAmountField.setText("");
-            resultField.setText("");
-        } else if (e.getSource() == calculateButton) {
-            String priceText = priceField.getText();
-            if (priceText.isEmpty()) {
-                JOptionPane.showMessageDialog(frame, "Please enter a price.");
-                return;
-            }
-            double price;
-            try {
-                price = Double.parseDouble(priceText);
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(frame, "Invalid price format.");
-                return;
-            }
-            if (price < 0) {
-                JOptionPane.showMessageDialog(frame, "Price cannot be negative.");
-                return;
-            }
+    /** Sets up the input panel. */
+    private void setupInputPanel(JPanel panel) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
 
-            double taxableAmount = price * taxRate;
-            double totalPrice = price + taxableAmount;
-            DecimalFormat df = new DecimalFormat("0.00");
-            taxableAmountField.setText(df.format(taxableAmount) + " " + selectedCurrency);
-            resultField.setText(df.format(totalPrice) + " " + selectedCurrency);
-        } else if (e.getSource() == cadItem) {
-            selectedCurrency = "CAD";
-        } else if (e.getSource() == usdItem) {
-            selectedCurrency = "USD";
-        } else if (e.getSource() == euroItem) {
-            selectedCurrency = "EURO";
-        } else if (e.getSource() == gbpItem) {
-            selectedCurrency = "GBP";
-        } else if (e.getSource() == abItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Alberta");
-        } else if (e.getSource() == bcItem) {
-            taxRate = PROVINCE_TAX_RATES.get("British Columbia");
-        } else if (e.getSource() == mbItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Manitoba");
-        } else if (e.getSource() == nbItem) {
-            taxRate = PROVINCE_TAX_RATES.get("New Brunswick");
-        } else if (e.getSource() == nlItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Newfoundland and Labrador");
-        } else if (e.getSource() == nsItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Nova Scotia");
-        } else if (e.getSource() == ntItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Northwest Territories");
-        } else if (e.getSource() == nuItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Nunavut");
-        } else if (e.getSource() == onItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Ontario");
-        } else if (e.getSource() == peItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Prince Edward Island");
-        } else if (e.getSource() == qcItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Quebec");
-        } else if (e.getSource() == skItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Saskatchewan");
-        } else if (e.getSource() == ytItem) {
-            taxRate = PROVINCE_TAX_RATES.get("Yukon");
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
+        panel.add(new JLabel("Price (CAD):"), gbc);
+
+        gbc.gridx = 1; gbc.weightx = 0.7;
+        priceField = new JTextField(10);
+        priceField.setToolTipText("Enter the pre-tax price in CAD");
+        panel.add(priceField, gbc);
+
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;
+        currentProvinceLabel = new JLabel("Province: " + selectedProvince);
+        panel.add(currentProvinceLabel, gbc);
+    }
+
+    /** Sets up the results panel. */
+    private void setupResultsPanel(JPanel panel) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        String[] labels = {"GST Amount:", "PST/HST Amount:", "Total Tax:", "Total (with Tax):"};
+        JTextField[] fields = {gstAmountField = new JTextField(10), pstAmountField = new JTextField(10),
+                totalTaxField = new JTextField(10), resultField = new JTextField(10)};
+
+        for (int i = 0; i < labels.length; i++) {
+            gbc.gridx = 0; gbc.gridy = i; gbc.weightx = 0.3;
+            panel.add(new JLabel(labels[i]), gbc);
+
+            gbc.gridx = 1; gbc.weightx = 0.7;
+            fields[i].setEditable(false);
+            if (i == 3) fields[i].setFont(fields[i].getFont().deriveFont(Font.BOLD));
+            panel.add(fields[i], gbc);
         }
     }
 
-    private void initializeProvinceTaxRates() {
-        PROVINCE_TAX_RATES.put("Alberta", 0.05);
-        PROVINCE_TAX_RATES.put("British Columbia", 0.12);
-        PROVINCE_TAX_RATES.put("Manitoba", 0.12);
-        PROVINCE_TAX_RATES.put("New Brunswick", 0.15);
-        PROVINCE_TAX_RATES.put("Newfoundland and Labrador", 0.15);
-        PROVINCE_TAX_RATES.put("Nova Scotia", 0.15);
-        PROVINCE_TAX_RATES.put("Northwest Territories", 0.05);
-        PROVINCE_TAX_RATES.put("Nunavut", 0.05);
-        PROVINCE_TAX_RATES.put("Ontario", 0.13);
-        PROVINCE_TAX_RATES.put("Prince Edward Island", 0.15);
-        PROVINCE_TAX_RATES.put("Quebec", 0.14975);
-        PROVINCE_TAX_RATES.put("Saskatchewan", 0.11);
-        PROVINCE_TAX_RATES.put("Yukon", 0.05);
+    /** Sets up the buttons. */
+    private void setupButtons(JPanel panel) {
+        clearButton = new JButton("Clear");
+        clearButton.setMnemonic(KeyEvent.VK_C);
+        clearButton.setToolTipText("Clear all fields (Alt+C)");
+        clearButton.addActionListener(this);
+        panel.add(clearButton);
+
+        calculateButton = new JButton("Calculate");
+        calculateButton.setMnemonic(KeyEvent.VK_A);
+        calculateButton.setToolTipText("Calculate tax (Alt+A)");
+        calculateButton.addActionListener(this);
+        panel.add(calculateButton);
+    }
+
+    /** Creates the menu bar. */
+    private void createMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+        JMenu provinceMenu = new JMenu("Province");
+        provinceMenu.setMnemonic(KeyEvent.VK_P);
+        JMenu helpMenu = new JMenu("Help");
+        helpMenu.setMnemonic(KeyEvent.VK_H);
+
+        helpMenu.add(new JMenuItem("About", KeyEvent.VK_A) {{
+            addActionListener(e -> showAboutDialog());
+        }});
+
+        PROVINCE_TAX_RATES.keySet().forEach(p -> provinceMenu.add(new JMenuItem(p) {{
+            addActionListener(Main.this);
+        }}));
+
+        menuBar.add(provinceMenu);
+        menuBar.add(helpMenu);
+        frame.setJMenuBar(menuBar);
+    }
+
+    /** Shows the about dialog. */
+    private void showAboutDialog() {
+        JOptionPane.showMessageDialog(frame,
+                "Canadian Tax Calculator\nA simple utility to calculate tax amounts across Canadian provinces.",
+                "About", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    /** Loads an ImageIcon from a path. */
+    private ImageIcon createImageIcon(String path) {
+        java.net.URL imgURL = getClass().getResource(path);
+        return imgURL != null ? new ImageIcon(imgURL) : null;
+    }
+
+    public static void main(String[] args) {
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        SwingUtilities.invokeLater(Main::new);
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == clearButton) clearFields();
+        else if (e.getSource() == calculateButton) calculateTax();
+        else if (e.getSource() instanceof JMenuItem) handleMenuSelection((JMenuItem) e.getSource());
+    }
+
+    /** Handles menu selections. */
+    private void handleMenuSelection(JMenuItem item) {
+        selectedProvince = item.getText();
+        TaxInfo taxInfo = PROVINCE_TAX_RATES.get(selectedProvince);
+        currentProvinceLabel.setText("Province: " + selectedProvince + " (" + taxInfo.getTaxType() + ")");
+        statusBar.setText("Selected province: " + selectedProvince);
+        if (!priceField.getText().trim().isEmpty()) calculateTax();
+    }
+
+    /** Clears all fields. */
+    private void clearFields() {
+        priceField.setText("");
+        gstAmountField.setText("");
+        pstAmountField.setText("");
+        totalTaxField.setText("");
+        resultField.setText("");
+        statusBar.setText("Fields cleared");
+    }
+
+    /** Calculates tax based on input in CAD. */
+    private void calculateTax() {
+        String priceText = priceField.getText().trim();
+        if (priceText.isEmpty()) { showError("Please enter a price."); return; }
+
+        double price;
+        try {
+            price = Double.parseDouble(priceText.replace(',', '.'));
+            if (price < 0) throw new NumberFormatException();
+        } catch (NumberFormatException ex) {
+            showError("Invalid price format or negative value.");
+            return;
+        }
+
+        // Calculate taxes directly in CAD
+        TaxInfo taxInfo = PROVINCE_TAX_RATES.get(selectedProvince);
+        double gstAmount = price * taxInfo.getGstRate();
+        double pstAmount = price * taxInfo.getPstRate();
+        double totalTax = gstAmount + pstAmount;
+        double total = price + totalTax;
+
+        // Display results with CAD symbol
+        gstAmountField.setText("$" + df.format(gstAmount));
+        pstAmountField.setText("$" + df.format(pstAmount));
+        totalTaxField.setText("$" + df.format(totalTax));
+        resultField.setText("$" + df.format(total));
+        statusBar.setText("Tax calculated successfully");
+    }
+
+    /** Shows an error message. */
+    private void showError(String message) {
+        JOptionPane.showMessageDialog(frame, message, "Error", JOptionPane.ERROR_MESSAGE);
+        statusBar.setText("Error: " + message);
+    }
+
+    /** Stores tax information. */
+    private static class TaxInfo {
+        private final double gstRate, pstRate;
+        private final String taxType;
+
+        TaxInfo(double gstRate, double pstRate, String taxType) {
+            this.gstRate = gstRate;
+            this.pstRate = pstRate;
+            this.taxType = taxType;
+        }
+
+        double getGstRate() { return gstRate; }
+        double getPstRate() { return pstRate; }
+        double getTotalRate() { return gstRate + pstRate; }
+        String getTaxType() { return taxType; }
     }
 }
