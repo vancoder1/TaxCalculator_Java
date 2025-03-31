@@ -10,8 +10,11 @@ import java.util.Map;
  * Calculates tax amounts based on Canadian provinces in Canadian dollars (CAD).
  */
 public class Main implements ActionListener {
+
+    private record TaxInfo(double gstRate, double pstRate, String taxType) {}
+
     // Constants for tax rates
-    private static final Map<String, TaxInfo> PROVINCE_TAX_RATES = new LinkedHashMap<String, TaxInfo>() {{
+    private static final Map<String, TaxInfo> PROVINCE_TAX_RATES = new LinkedHashMap<>() {{
         put("Alberta", new TaxInfo(0.05, 0.0, "GST Only"));
         put("Northwest Territories", new TaxInfo(0.05, 0.0, "GST Only"));
         put("Nunavut", new TaxInfo(0.05, 0.0, "GST Only"));
@@ -32,7 +35,7 @@ public class Main implements ActionListener {
     private JTextField priceField, gstAmountField, pstAmountField, totalTaxField, resultField;
     private JLabel currentProvinceLabel;
     private JFrame frame;
-    private DecimalFormat df = new DecimalFormat("0.00");
+    private final DecimalFormat df = new DecimalFormat("0.00");
 
     // Status bar
     private JLabel statusBar;
@@ -59,20 +62,24 @@ public class Main implements ActionListener {
         mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         frame.add(mainPanel);
 
-        // Add panels
-        mainPanel.add(createPanel(new GridBagLayout(), "Input"), BorderLayout.NORTH);
-        mainPanel.add(createPanel(new GridBagLayout(), "Tax Breakdown"), BorderLayout.CENTER);
-        mainPanel.add(new JPanel(new FlowLayout(FlowLayout.CENTER)), BorderLayout.SOUTH);
+        // Add panels using helper method
+        JPanel inputPanel = createPanel(new GridBagLayout(), "Input");
+        JPanel resultsPanel = createPanel(new GridBagLayout(), "Tax Breakdown");
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+
+        mainPanel.add(inputPanel, BorderLayout.NORTH);
+        mainPanel.add(resultsPanel, BorderLayout.CENTER);
+        mainPanel.add(buttonPanel, BorderLayout.SOUTH);
 
         // Status bar
         statusBar = new JLabel(" ");
         statusBar.setBorder(BorderFactory.createLoweredBevelBorder());
         mainPanel.add(statusBar, BorderLayout.PAGE_END);
 
-        // Setup components
-        setupInputPanel((JPanel) mainPanel.getComponent(0));
-        setupResultsPanel((JPanel) mainPanel.getComponent(1));
-        setupButtons((JPanel) mainPanel.getComponent(2));
+        // Setup components in their panels
+        setupInputPanel(inputPanel);
+        setupResultsPanel(resultsPanel);
+        setupButtons(buttonPanel);
         createMenuBar();
 
         // Add Enter key listener to price field
@@ -135,18 +142,21 @@ public class Main implements ActionListener {
         }
     }
 
-    /** Sets up the buttons. */
+    /** Creates a configured JButton. */
+    private JButton createButton(String text, int mnemonic, String tooltip, ActionListener listener) {
+        JButton button = new JButton(text);
+        button.setMnemonic(mnemonic);
+        button.setToolTipText(tooltip);
+        button.addActionListener(listener);
+        return button;
+    }
+
+    /** Sets up the buttons using the helper method. */
     private void setupButtons(JPanel panel) {
-        clearButton = new JButton("Clear");
-        clearButton.setMnemonic(KeyEvent.VK_C);
-        clearButton.setToolTipText("Clear all fields (Alt+C)");
-        clearButton.addActionListener(this);
+        clearButton = createButton("Clear", KeyEvent.VK_C, "Clear all fields (Alt+C)", this);
         panel.add(clearButton);
 
-        calculateButton = new JButton("Calculate");
-        calculateButton.setMnemonic(KeyEvent.VK_A);
-        calculateButton.setToolTipText("Calculate tax (Alt+A)");
-        calculateButton.addActionListener(this);
+        calculateButton = createButton("Calculate", KeyEvent.VK_A, "Calculate tax (Alt+A)", this);
         panel.add(calculateButton);
     }
 
@@ -158,13 +168,15 @@ public class Main implements ActionListener {
         JMenu helpMenu = new JMenu("Help");
         helpMenu.setMnemonic(KeyEvent.VK_H);
 
-        helpMenu.add(new JMenuItem("About", KeyEvent.VK_A) {{
-            addActionListener(e -> showAboutDialog());
-        }});
+        JMenuItem aboutItem = new JMenuItem("About", KeyEvent.VK_A);
+        aboutItem.addActionListener(e -> showAboutDialog());
+        helpMenu.add(aboutItem);
 
-        PROVINCE_TAX_RATES.keySet().forEach(p -> provinceMenu.add(new JMenuItem(p) {{
-            addActionListener(Main.this);
-        }}));
+        PROVINCE_TAX_RATES.keySet().forEach(p -> {
+            JMenuItem item = new JMenuItem(p);
+            item.addActionListener(this);
+            provinceMenu.add(item);
+        });
 
         menuBar.add(provinceMenu);
         menuBar.add(helpMenu);
@@ -188,25 +200,32 @@ public class Main implements ActionListener {
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Couldn't set system look and feel: " + e.getMessage());
         }
         SwingUtilities.invokeLater(Main::new);
     }
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        if (e.getSource() == clearButton) clearFields();
-        else if (e.getSource() == calculateButton) calculateTax();
-        else if (e.getSource() instanceof JMenuItem) handleMenuSelection((JMenuItem) e.getSource());
+        Object source = e.getSource();
+        if (source == clearButton) {
+            clearFields();
+        } else if (source == calculateButton) {
+            calculateTax();
+        } else if (source instanceof JMenuItem item) {
+            handleMenuSelection(item);
+        }
     }
 
     /** Handles menu selections. */
     private void handleMenuSelection(JMenuItem item) {
         selectedProvince = item.getText();
         TaxInfo taxInfo = PROVINCE_TAX_RATES.get(selectedProvince);
-        currentProvinceLabel.setText("Province: " + selectedProvince + " (" + taxInfo.getTaxType() + ")");
+        currentProvinceLabel.setText("Province: " + selectedProvince + " (" + taxInfo.taxType() + ")");
         statusBar.setText("Selected province: " + selectedProvince);
-        if (!priceField.getText().trim().isEmpty()) calculateTax();
+        if (!priceField.getText().trim().isEmpty()) {
+            calculateTax();
+        }
     }
 
     /** Clears all fields. */
@@ -222,21 +241,27 @@ public class Main implements ActionListener {
     /** Calculates tax based on input in CAD. */
     private void calculateTax() {
         String priceText = priceField.getText().trim();
-        if (priceText.isEmpty()) { showError("Please enter a price."); return; }
+        if (priceText.isEmpty()) {
+            showError("Please enter a price.");
+            return;
+        }
 
         double price;
         try {
             price = Double.parseDouble(priceText.replace(',', '.'));
-            if (price < 0) throw new NumberFormatException();
+            if (price < 0) {
+                showError("Price cannot be negative.");
+                return;
+            }
         } catch (NumberFormatException ex) {
-            showError("Invalid price format or negative value.");
+            showError("Invalid price format. Please enter a valid number.");
             return;
         }
 
         // Calculate taxes directly in CAD
         TaxInfo taxInfo = PROVINCE_TAX_RATES.get(selectedProvince);
-        double gstAmount = price * taxInfo.getGstRate();
-        double pstAmount = price * taxInfo.getPstRate();
+        double gstAmount = price * taxInfo.gstRate();
+        double pstAmount = price * taxInfo.pstRate();
         double totalTax = gstAmount + pstAmount;
         double total = price + totalTax;
 
@@ -245,29 +270,12 @@ public class Main implements ActionListener {
         pstAmountField.setText("$" + df.format(pstAmount));
         totalTaxField.setText("$" + df.format(totalTax));
         resultField.setText("$" + df.format(total));
-        statusBar.setText("Tax calculated successfully");
+        statusBar.setText("Tax calculated successfully for " + selectedProvince);
     }
 
     /** Shows an error message. */
     private void showError(String message) {
         JOptionPane.showMessageDialog(frame, message, "Error", JOptionPane.ERROR_MESSAGE);
         statusBar.setText("Error: " + message);
-    }
-
-    /** Stores tax information. */
-    private static class TaxInfo {
-        private final double gstRate, pstRate;
-        private final String taxType;
-
-        TaxInfo(double gstRate, double pstRate, String taxType) {
-            this.gstRate = gstRate;
-            this.pstRate = pstRate;
-            this.taxType = taxType;
-        }
-
-        double getGstRate() { return gstRate; }
-        double getPstRate() { return pstRate; }
-        double getTotalRate() { return gstRate + pstRate; }
-        String getTaxType() { return taxType; }
     }
 }
